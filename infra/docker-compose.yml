@@ -1,0 +1,51 @@
+# ECDAT local stack:  docker compose up --build
+# Frontend  -> http://localhost:5173
+# API/docs  -> http://localhost:8000/docs
+name: ecdat
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ecdat
+      POSTGRES_PASSWORD: ecdat
+      POSTGRES_DB: ecdat
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ecdat"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    ports:
+      - "5432:5432"
+
+  api:
+    build:
+      context: ../backend
+    environment:
+      ECDAT_ENV: docker
+      ECDAT_DATABASE_URL: postgresql+psycopg://ecdat:ecdat@db:5432/ecdat
+      ECDAT_JWT_SECRET: dev-compose-secret-change-me-change-me-1234
+      ECDAT_CORS_ORIGINS: http://localhost:5173,http://localhost
+      ECDAT_LOG_JSON: "true"
+      ECDAT_SEED_ON_BOOT: "true"
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    volumes:
+      - reports:/app/reports_out
+
+  web:
+    build:
+      context: ../frontend
+    depends_on:
+      - api
+    ports:
+      - "5173:80"
+
+volumes:
+  pgdata:
+  reports:

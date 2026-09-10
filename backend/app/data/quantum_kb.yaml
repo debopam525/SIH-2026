@@ -1,0 +1,146 @@
+# Quantum-vulnerability knowledge base. Data-driven so verdicts stay auditable.
+# The engine (app/analysis/quantum.py) NEVER decides from the algorithm name alone — it also
+# consults key_size, mode and protocol context rules below, and always returns an explanation.
+version: 2
+
+# Bucketed by cryptographic family. `status` is the *baseline* before context rules.
+families:
+  public-key:
+    algorithms: [RSA, DSA, DH, ElGamal, Paillier, ECIES]
+    shor_impact: broken
+    grover_impact: not_applicable
+    status: quantum-vulnerable
+    explanation: >
+      Security rests on integer factorisation or the finite-field discrete-log problem.
+      Shor's algorithm solves both in polynomial time on a cryptographically-relevant quantum
+      computer (CRQC), so a sufficiently large quantum computer fully breaks this primitive.
+      Migrate to a NIST PQC scheme (ML-KEM for key establishment, ML-DSA / SLH-DSA / Falcon for
+      signatures) or a classical+PQC hybrid.
+
+  elliptic-curve:
+    algorithms: [ECDSA, ECDH, ECC, Ed25519, X25519, Ed448, X448, EdDSA, SM2]
+    shor_impact: broken
+    grover_impact: not_applicable
+    status: quantum-vulnerable
+    explanation: >
+      Elliptic-curve cryptography relies on the elliptic-curve discrete-log problem, which
+      Shor's algorithm also solves efficiently. ECC key sizes are smaller, so the quantum
+      resources required are lower than for equivalent RSA — treat ECC public-key use as
+      quantum-vulnerable and prioritise its migration.
+
+  symmetric:
+    algorithms: [AES, ChaCha20, Camellia, SM4, Blowfish, Twofish, Serpent, 3DES, DES, RC4, IDEA, CAST5]
+    shor_impact: not_applicable
+    grover_impact: sqrt_speedup
+    status: quantum-weakened
+    explanation: >
+      No known quantum algorithm breaks a well-designed block/stream cipher. Grover's algorithm
+      gives at best a square-root speedup on key search, halving the effective key strength
+      (AES-128 -> ~64-bit quantum margin, AES-256 -> ~128-bit). The remedy is a larger key, not
+      replacement: prefer 256-bit keys. This is NOT automatically a critical finding.
+
+  hash:
+    algorithms: [SHA-256, SHA-384, SHA-512, SHA-3, SHA3-256, SHA3-512, BLAKE2, BLAKE3, SHA-224, RIPEMD-160]
+    shor_impact: not_applicable
+    grover_impact: sqrt_speedup
+    status: quantum-weakened
+    explanation: >
+      Grover reduces pre-image resistance and (with BHT) collision resistance sub-linearly.
+      A >= 256-bit digest keeps a comfortable post-quantum security margin; SHA-384 / SHA-512 /
+      SHA3-384+ are recommended where long-term collision resistance matters.
+
+  broken-hash:
+    algorithms: [MD5, MD4, MD2, SHA-1, RIPEMD-128]
+    shor_impact: not_applicable
+    grover_impact: not_applicable
+    status: broken-classical
+    explanation: >
+      Already broken by classical cryptanalysis (practical collisions). Quantum computing is
+      irrelevant to the verdict — replace immediately with SHA-256 or better (SHA-384/512 for
+      long-lived data).
+
+  weak-symmetric:
+    algorithms: [DES, 3DES, RC4, RC2, IDEA]
+    shor_impact: not_applicable
+    grover_impact: sqrt_speedup
+    status: broken-classical
+    explanation: >
+      Effective key strength is already inadequate (DES 56-bit, 3DES ~112-bit and deprecated by
+      NIST after 2023, RC4 has practical biases). Replace with AES-256-GCM regardless of the
+      quantum timeline.
+
+  mac:
+    algorithms: [HMAC, KMAC, Poly1305, CMAC, GMAC]
+    shor_impact: not_applicable
+    grover_impact: sqrt_speedup
+    status: quantum-safe
+    explanation: >
+      Keyed MACs inherit the underlying hash/cipher strength. HMAC with a >= 256-bit key and a
+      non-broken hash retains a strong post-quantum margin; no migration needed beyond avoiding
+      MD5/SHA-1 as the inner hash.
+
+  kdf:
+    algorithms: [PBKDF2, scrypt, Argon2, Argon2id, HKDF, bcrypt]
+    shor_impact: not_applicable
+    grover_impact: sqrt_speedup
+    status: quantum-safe
+    explanation: >
+      Password/key-derivation functions are memory- and iteration-hardened; Grover offers only a
+      square-root speedup against the derived key. Keep a >= 256-bit output and modern parameters.
+
+  protocol:
+    algorithms: [TLS, SSL, SSH, IPsec, IKE, DTLS, QUIC, Kerberos]
+    shor_impact: depends_on_suite
+    grover_impact: depends_on_suite
+    status: quantum-vulnerable
+    explanation: >
+      The protocol itself is a container; its quantum exposure depends on the negotiated key
+      exchange and authentication. Classic TLS/SSH key exchange (RSA, ECDHE, DHE) is
+      Shor-vulnerable — the recorded traffic is exposed to "harvest now, decrypt later". Adopt a
+      hybrid key exchange (e.g. X25519MLKEM768) and PQC certificates when available.
+
+  pqc-kem:
+    algorithms: [ML-KEM, Kyber, FrodoKEM, HQC, BIKE, Classic-McEliece]
+    shor_impact: resistant
+    grover_impact: parameterised
+    status: quantum-safe
+    explanation: >
+      NIST-selected / round-4 KEMs designed to resist both classical and quantum attack.
+      Already an acceptable target state for key establishment.
+
+  pqc-signature:
+    algorithms: [ML-DSA, Dilithium, SLH-DSA, "SPHINCS+", Falcon, XMSS, LMS]
+    shor_impact: resistant
+    grover_impact: parameterised
+    status: quantum-safe
+    explanation: >
+      NIST-selected post-quantum signature schemes. Acceptable target state for authentication
+      and code/document signing.
+
+# Context rules refine the baseline. First matching rule wins per predicate group.
+# Predicates: family, algorithm, key_size_min, key_size_max, mode_in, protocol_version_in.
+context_rules:
+  - when: {algorithm: AES, key_size_max: 128}
+    set_status: quantum-weakened
+    note: "AES with a 128-bit key leaves only ~64 bits of Grover margin; plan a move to AES-256."
+  - when: {algorithm: AES, key_size_min: 256}
+    set_status: quantum-safe
+    note: "AES-256 retains ~128-bit effective strength under Grover — acceptable post-quantum."
+  - when: {algorithm: AES, mode_in: [ECB]}
+    set_status: broken-classical
+    note: "ECB mode leaks plaintext structure; this is a classical weakness independent of quantum."
+  - when: {family: hash, key_size_max: 224}
+    set_status: quantum-weakened
+    note: "Digest < 256 bits — weak Grover margin; upgrade to SHA-256 or larger."
+  - when: {algorithm: "3DES"}
+    set_status: broken-classical
+    note: "3DES is deprecated by NIST (SP 800-131A) irrespective of quantum considerations."
+  - when: {protocol_version_in: [TLSv1, TLSv1.1, SSLv3, SSLv2]}
+    set_status: broken-classical
+    note: "Legacy TLS/SSL versions are deprecated and independently insecure."
+  - when: {protocol_version_in: [TLSv1.3]}
+    set_status: quantum-vulnerable
+    note: "TLS 1.3 is modern but its default ECDHE key exchange is still Shor-vulnerable; enable a PQC hybrid group."
+
+# Non-quantum but security-relevant: surfaced in the explanation, not the verdict.
+harvest_now_decrypt_later_families: [public-key, elliptic-curve, protocol]

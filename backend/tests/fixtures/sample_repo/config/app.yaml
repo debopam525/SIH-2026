@@ -1,0 +1,9 @@
+service:
+  name: payments-api
+  crypto:
+    algorithm: AES-256-GCM
+    kdf: PBKDF2
+    signature_algorithm: RS256
+    hash: SHA-512
+  tls:
+    min_version: TLSv1.2

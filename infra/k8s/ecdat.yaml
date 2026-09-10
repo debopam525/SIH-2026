@@ -1,0 +1,104 @@
+# Minimal production-shaped manifests. Assumes images pushed as ecdat/api and ecdat/web,
+# and a managed Postgres reachable via the `ecdat-secrets` secret.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ecdat
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: ecdat-secrets
+  namespace: ecdat
+type: Opaque
+stringData:
+  ECDAT_DATABASE_URL: postgresql+psycopg://ecdat:CHANGEME@postgres:5432/ecdat
+  ECDAT_JWT_SECRET: CHANGE-ME-32-CHARS-MINIMUM-SECRET-VALUE
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ecdat-api
+  namespace: ecdat
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: ecdat-api }
+  template:
+    metadata:
+      labels: { app: ecdat-api }
+    spec:
+      containers:
+        - name: api
+          image: ecdat/api:latest
+          ports: [{ containerPort: 8000 }]
+          envFrom:
+            - secretRef: { name: ecdat-secrets }
+          env:
+            - { name: ECDAT_ENV, value: "prod" }
+            - { name: ECDAT_LOG_JSON, value: "true" }
+            - { name: ECDAT_SEED_ON_BOOT, value: "false" }
+          readinessProbe:
+            httpGet: { path: /health, port: 8000 }
+            initialDelaySeconds: 10
+          livenessProbe:
+            httpGet: { path: /health, port: 8000 }
+            initialDelaySeconds: 20
+          resources:
+            requests: { cpu: "250m", memory: "512Mi" }
+            limits: { cpu: "1", memory: "1Gi" }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ecdat-api
+  namespace: ecdat
+spec:
+  selector: { app: ecdat-api }
+  ports: [{ port: 8000, targetPort: 8000 }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ecdat-web
+  namespace: ecdat
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: ecdat-web }
+  template:
+    metadata:
+      labels: { app: ecdat-web }
+    spec:
+      containers:
+        - name: web
+          image: ecdat/web:latest
+          ports: [{ containerPort: 80 }]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ecdat-web
+  namespace: ecdat
+spec:
+  selector: { app: ecdat-web }
+  ports: [{ port: 80, targetPort: 80 }]
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ecdat
+  namespace: ecdat
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  rules:
+    - host: ecdat.example.com
+      http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend: { service: { name: ecdat-api, port: { number: 8000 } } }
+          - path: /
+            pathType: Prefix
+            backend: { service: { name: ecdat-web, port: { number: 80 } } }

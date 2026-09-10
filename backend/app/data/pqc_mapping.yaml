@@ -1,0 +1,199 @@
+# PQC recommendation mapping table. Data-driven so the recommendation engine
+# (app/analysis/recommendation.py) contains scoring logic only, not policy.
+#
+# Use cases: kem (key establishment / encryption), signature (authentication / signing),
+#            symmetric (bulk encryption), hash (integrity), protocol (TLS/SSH/... container).
+#
+# Candidate factor scores are 1-5 where 5 is best FOR THAT FACTOR (e.g. security_level 5 =
+# strongest; latency 5 = lowest latency; memory_usage 5 = smallest footprint).
+version: 2
+
+# Which use case does a discovered asset map to?
+classify:
+  by_family:
+    public-key: signature        # refined by primitive below
+    elliptic-curve: signature
+    symmetric: symmetric
+    hash: hash
+    broken-hash: hash
+    weak-symmetric: symmetric
+    protocol: protocol
+    mac: none
+    kdf: none
+    pqc-kem: none
+    pqc-signature: none
+  by_primitive:
+    kem: kem
+    key-exchange: kem
+    signature: signature
+    cipher: symmetric
+    hash: hash
+    protocol: protocol
+
+candidates:
+  kem:
+    - name: ML-KEM-768
+      recommendation_type: pqc
+      security_level: 4          # NIST level 3
+      application_fit: 5
+      latency: 4
+      compute_performance: 5
+      memory_usage: 4
+      migration_cost: 3
+      compatibility: 3
+      notes: "NIST FIPS 203. Balanced default for TLS, VPN and application-layer key wrap."
+      migration_notes: "Drop-in for ephemeral ECDH in most libraries (liboqs, BoringSSL, OpenSSL 3.5)."
+    - name: Hybrid X25519 + ML-KEM-768
+      recommendation_type: hybrid
+      security_level: 5
+      application_fit: 5
+      latency: 4
+      compute_performance: 4
+      memory_usage: 3
+      migration_cost: 3
+      compatibility: 4
+      notes: "Classical+PQC hybrid; stays secure if either component holds. Matches the IETF TLS hybrid draft / X25519MLKEM768."
+      migration_notes: "Recommended transitional state for anything doing TLS today (harvest-now-decrypt-later defence)."
+    - name: ML-KEM-1024
+      recommendation_type: pqc
+      security_level: 5
+      application_fit: 4
+      latency: 3
+      compute_performance: 4
+      memory_usage: 3
+      migration_cost: 3
+      compatibility: 3
+      notes: "NIST level 5. Use for data with multi-decade confidentiality requirements."
+      migration_notes: "Larger keys/ciphertexts (~1.5 KB); check MTU-sensitive protocols."
+
+  signature:
+    - name: ML-DSA-65
+      recommendation_type: pqc
+      security_level: 4
+      application_fit: 5
+      latency: 4
+      compute_performance: 4
+      memory_usage: 3
+      migration_cost: 3
+      compatibility: 3
+      notes: "NIST FIPS 204 (Dilithium). General-purpose default for TLS certs, code signing, tokens."
+      migration_notes: "Public key ~1.3 KB, signature ~3.3 KB. Fine for most PKI; check embedded/constrained targets."
+    - name: SLH-DSA-SHA2-128s
+      recommendation_type: pqc
+      security_level: 5
+      application_fit: 3
+      latency: 2
+      compute_performance: 2
+      memory_usage: 4
+      migration_cost: 3
+      compatibility: 4
+      notes: "NIST FIPS 205 (SPHINCS+). Hash-based, most conservative security assumptions."
+      migration_notes: "Slow signing and large signatures (~7.8 KB). Best for rarely-signed, long-lived roots (firmware, CA roots)."
+    - name: Falcon-512
+      recommendation_type: pqc
+      security_level: 4
+      application_fit: 4
+      latency: 4
+      compute_performance: 3
+      memory_usage: 5
+      migration_cost: 3
+      compatibility: 2
+      notes: "Compact signatures (~0.7 KB). Good where signature size is the constraint."
+      migration_notes: "Constant-time floating-point signing is implementation-sensitive; prefer vetted libraries."
+    - name: Hybrid ECDSA-P256 + ML-DSA-65
+      recommendation_type: hybrid
+      security_level: 5
+      application_fit: 4
+      latency: 3
+      compute_performance: 3
+      memory_usage: 2
+      migration_cost: 4
+      compatibility: 4
+      notes: "Dual signatures; verifier accepts only if both validate. Transitional for PKI that cannot flag-day."
+      migration_notes: "Composite / dual-cert approaches (X9.146, LAMPS drafts). Larger certs and handshakes."
+
+  symmetric:
+    - name: AES-256-GCM
+      recommendation_type: symmetric_upgrade
+      security_level: 5
+      application_fit: 5
+      latency: 5
+      compute_performance: 5
+      memory_usage: 5
+      migration_cost: 2
+      compatibility: 5
+      notes: "Grover leaves ~128-bit strength at 256-bit keys. AEAD mode also fixes integrity gaps."
+      migration_notes: "Key-length + mode change only; no new primitive. Re-key and re-encrypt at rest where feasible."
+    - name: ChaCha20-Poly1305
+      recommendation_type: symmetric_upgrade
+      security_level: 5
+      application_fit: 4
+      latency: 5
+      compute_performance: 4
+      memory_usage: 5
+      migration_cost: 2
+      compatibility: 4
+      notes: "256-bit key AEAD; strong software performance where AES-NI is absent."
+      migration_notes: "Good for mobile/embedded fleets without hardware AES."
+
+  hash:
+    - name: SHA-384
+      recommendation_type: config_change
+      security_level: 4
+      application_fit: 5
+      latency: 5
+      compute_performance: 5
+      memory_usage: 5
+      migration_cost: 2
+      compatibility: 5
+      notes: "Comfortable Grover margin; common in Suite B / CNSA profiles."
+      migration_notes: "Digest-length change; watch fixed-width storage columns and protocol fields."
+    - name: SHA3-256
+      recommendation_type: config_change
+      security_level: 4
+      application_fit: 4
+      latency: 4
+      compute_performance: 4
+      memory_usage: 5
+      migration_cost: 3
+      compatibility: 3
+      notes: "Sponge construction, different design family from SHA-2 (defence in depth)."
+      migration_notes: "Verify library + peer support before switching wire formats."
+
+  protocol:
+    - name: TLS 1.3 + X25519MLKEM768 hybrid group
+      recommendation_type: hybrid
+      security_level: 5
+      application_fit: 5
+      latency: 4
+      compute_performance: 4
+      memory_usage: 4
+      migration_cost: 3
+      compatibility: 3
+      notes: "Enable the hybrid key-exchange group and disable TLS < 1.2. Mitigates harvest-now-decrypt-later."
+      migration_notes: "Supported in OpenSSL 3.5+, BoringSSL, recent Chrome/Firefox. Keep classical groups for fallback during rollout."
+
+  none:
+    - name: No cryptographic change required
+      recommendation_type: no_change
+      security_level: 5
+      application_fit: 5
+      latency: 5
+      compute_performance: 5
+      memory_usage: 5
+      migration_cost: 5
+      compatibility: 5
+      notes: "Primitive retains an adequate post-quantum margin. Monitor for guidance changes."
+      migration_notes: "Keep key sizes >= 256-bit and avoid MD5/SHA-1 as inner hashes."
+
+# Weights for combining candidate factor scores into the ranking score. Context-adjusted at
+# runtime: high business_criticality raises `security_level`; latency-sensitive app types raise
+# `latency`/`compute_performance`. See recommendation.py.
+selection_weights:
+  security_level: 0.28
+  application_fit: 0.14
+  latency: 0.12
+  compute_performance: 0.12
+  memory_usage: 0.10
+  migration_cost: 0.12
+  compatibility: 0.12

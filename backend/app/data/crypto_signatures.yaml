@@ -1,0 +1,369 @@
+# ECDAT detection signature knowledge base.
+# Each signature is matched line-by-line against candidate files. `patterns` are Python regex
+# (case-sensitive unless (?i) is used). The `Detector` interface (app/detection/rules.py) can
+# be extended with AST / ML backends without changing this file's schema.
+#
+# confidence:
+#   confirmed_api  - an unambiguous cryptographic API call / import
+#   strong_textual - a strong keyword in a code/config context (e.g. cipher suite string)
+#   weak_textual   - a bare algorithm name that could be a comment / variable
+version: 2
+
+signatures:
+  # ---------------------------------------------------------------- Python: public-key
+  - id: py-rsa-cryptography
+    algorithm: RSA
+    family: public-key
+    primitive: signature
+    languages: [python]
+    library: cryptography
+    patterns:
+      - 'rsa\.generate_private_key'
+      - 'asymmetric\.rsa'
+      - 'padding\.OAEP'
+      - 'padding\.PKCS1v15'
+    key_size_regex: 'key_size\s*=\s*(\d+)'
+    confidence: confirmed_api
+  - id: py-rsa-pycryptodome
+    algorithm: RSA
+    family: public-key
+    primitive: key-exchange
+    languages: [python]
+    library: pycryptodome
+    patterns:
+      - 'Crypto\.PublicKey\.RSA'
+      - 'RSA\.generate\('
+      - 'PKCS1_OAEP'
+    key_size_regex: 'RSA\.generate\(\s*(\d+)'
+    confidence: confirmed_api
+  - id: py-dsa
+    algorithm: DSA
+    family: public-key
+    primitive: signature
+    languages: [python]
+    patterns: ['asymmetric\.dsa', 'dsa\.generate_private_key', 'DSA\.generate\(']
+    key_size_regex: 'key_size\s*=\s*(\d+)'
+    confidence: confirmed_api
+  - id: py-dh
+    algorithm: DH
+    family: public-key
+    primitive: key-exchange
+    languages: [python]
+    patterns: ['asymmetric\.dh', 'dh\.generate_parameters', 'DiffieHellman']
+    confidence: confirmed_api
+  - id: py-ecdsa
+    algorithm: ECDSA
+    family: elliptic-curve
+    primitive: signature
+    languages: [python]
+    patterns: ['ec\.ECDSA', 'ec\.generate_private_key', 'SECP256R1', 'SECP384R1', 'ecdsa\.SigningKey']
+    curve_regex: 'SECP(\d+)(?:R1|K1)'
+    confidence: confirmed_api
+  - id: py-ecdh
+    algorithm: ECDH
+    family: elliptic-curve
+    primitive: key-exchange
+    languages: [python]
+    patterns: ['ec\.ECDH', '\.exchange\(\s*ec\.ECDH']
+    confidence: confirmed_api
+  - id: py-ed25519
+    algorithm: Ed25519
+    family: elliptic-curve
+    primitive: signature
+    languages: [python]
+    patterns: ['ed25519\.Ed25519PrivateKey', 'Ed25519PrivateKey', 'ed25519\.Ed25519']
+    confidence: confirmed_api
+  - id: py-x25519
+    algorithm: X25519
+    family: elliptic-curve
+    primitive: key-exchange
+    languages: [python]
+    patterns: ['x25519\.X25519PrivateKey', 'X25519PrivateKey']
+    confidence: confirmed_api
+
+  # ---------------------------------------------------------------- Python: symmetric / hash / kdf
+  - id: py-aes
+    algorithm: AES
+    family: symmetric
+    primitive: cipher
+    languages: [python]
+    patterns: ['algorithms\.AES', 'AES\.new\(', 'Cipher\(\s*algorithms\.AES', 'AESGCM\(', 'AESCCM\(']
+    key_size_regex: 'AES(?:-|_)?(128|192|256)'
+    mode_regex: 'modes\.(GCM|CBC|CTR|CFB|OFB|ECB)'
+    confidence: confirmed_api
+  - id: py-3des
+    algorithm: 3DES
+    family: symmetric
+    primitive: cipher
+    languages: [python]
+    patterns: ['algorithms\.TripleDES', 'DES3\.new\(', 'TripleDES']
+    confidence: confirmed_api
+  - id: py-des
+    algorithm: DES
+    family: symmetric
+    primitive: cipher
+    languages: [python]
+    patterns: ['algorithms\.(?<![A-Za-z])DES(?![0-9A-Za-z])', '\bDES\.new\(']
+    confidence: strong_textual
+  - id: py-rc4
+    algorithm: RC4
+    family: symmetric
+    primitive: cipher
+    languages: [python]
+    patterns: ['ARC4', 'algorithms\.ARC4', 'RC4']
+    confidence: strong_textual
+  - id: py-chacha20
+    algorithm: ChaCha20
+    family: symmetric
+    primitive: cipher
+    languages: [python]
+    patterns: ['ChaCha20Poly1305', 'algorithms\.ChaCha20']
+    confidence: confirmed_api
+  - id: py-blowfish
+    algorithm: Blowfish
+    family: symmetric
+    primitive: cipher
+    languages: [python]
+    patterns: ['algorithms\.Blowfish', 'Blowfish\.new\(']
+    confidence: confirmed_api
+  - id: py-md5
+    algorithm: MD5
+    family: hash
+    primitive: hash
+    languages: [python]
+    patterns: ['hashlib\.md5', 'hashes\.MD5', 'Crypto\.Hash\.MD5']
+    confidence: confirmed_api
+  - id: py-sha1
+    algorithm: SHA-1
+    family: hash
+    primitive: hash
+    languages: [python]
+    patterns: ['hashlib\.sha1', 'hashes\.SHA1\b']
+    confidence: confirmed_api
+  - id: py-sha256
+    algorithm: SHA-256
+    family: hash
+    primitive: hash
+    languages: [python]
+    patterns: ['hashlib\.sha256', 'hashes\.SHA256']
+    confidence: confirmed_api
+  - id: py-sha384
+    algorithm: SHA-384
+    family: hash
+    primitive: hash
+    languages: [python]
+    patterns: ['hashlib\.sha384', 'hashes\.SHA384']
+    confidence: confirmed_api
+  - id: py-sha512
+    algorithm: SHA-512
+    family: hash
+    primitive: hash
+    languages: [python]
+    patterns: ['hashlib\.sha512', 'hashes\.SHA512']
+    confidence: confirmed_api
+  - id: py-sha3
+    algorithm: SHA-3
+    family: hash
+    primitive: hash
+    languages: [python]
+    patterns: ['hashlib\.sha3_', 'sha3_256', 'SHA3_256', 'hashes\.SHA3']
+    confidence: confirmed_api
+  - id: py-hmac
+    algorithm: HMAC
+    family: mac
+    primitive: mac
+    languages: [python]
+    patterns: ['\bhmac\.new\(', 'hmac\.HMAC', 'import hmac']
+    confidence: confirmed_api
+  - id: py-pbkdf2
+    algorithm: PBKDF2
+    family: kdf
+    primitive: kdf
+    languages: [python]
+    patterns: ['PBKDF2HMAC', 'pbkdf2_hmac', 'PBKDF2\(']
+    confidence: confirmed_api
+  - id: py-scrypt
+    algorithm: scrypt
+    family: kdf
+    primitive: kdf
+    languages: [python]
+    patterns: ['\bScrypt\(', 'hashlib\.scrypt']
+    confidence: confirmed_api
+  - id: py-argon2
+    algorithm: Argon2
+    family: kdf
+    primitive: kdf
+    languages: [python]
+    patterns: ['argon2', 'Argon2id', 'PasswordHasher\(']
+    confidence: strong_textual
+  - id: py-bcrypt
+    algorithm: bcrypt
+    family: kdf
+    primitive: kdf
+    languages: [python]
+    patterns: ['import bcrypt', 'bcrypt\.hashpw', 'bcrypt\.gensalt']
+    confidence: confirmed_api
+
+  # ---------------------------------------------------------------- JavaScript / TypeScript
+  - id: js-node-crypto-createhash
+    algorithm: DYNAMIC_HASH
+    family: hash
+    primitive: hash
+    languages: [javascript, typescript]
+    patterns: ["crypto\\.createHash\\(\\s*['\"]([a-zA-Z0-9-]+)['\"]"]
+    dynamic_algorithm_regex: "createHash\\(\\s*['\"]([a-zA-Z0-9-]+)['\"]"
+    confidence: confirmed_api
+  - id: js-node-crypto-cipher
+    algorithm: DYNAMIC_CIPHER
+    family: symmetric
+    primitive: cipher
+    languages: [javascript, typescript]
+    patterns: ["crypto\\.createCipheriv\\(\\s*['\"]([a-zA-Z0-9-]+)['\"]"]
+    dynamic_algorithm_regex: "createCipheriv\\(\\s*['\"]([a-z0-9-]+)['\"]"
+    confidence: confirmed_api
+  - id: js-node-generatekeypair
+    algorithm: DYNAMIC_PK
+    family: public-key
+    primitive: key-exchange
+    languages: [javascript, typescript]
+    patterns: ["generateKeyPair(?:Sync)?\\(\\s*['\"]([a-z0-9]+)['\"]"]
+    dynamic_algorithm_regex: "generateKeyPair(?:Sync)?\\(\\s*['\"]([a-z0-9]+)['\"]"
+    confidence: confirmed_api
+  - id: js-webcrypto-rsa
+    algorithm: RSA
+    family: public-key
+    primitive: signature
+    languages: [javascript, typescript]
+    patterns: ['RSA-OAEP', 'RSASSA-PKCS1-v1_5', 'RSA-PSS']
+    confidence: strong_textual
+  - id: js-webcrypto-ecdsa
+    algorithm: ECDSA
+    family: elliptic-curve
+    primitive: signature
+    languages: [javascript, typescript]
+    patterns: ["name:\\s*['\"]ECDSA['\"]", "namedCurve:\\s*['\"](P-256|P-384|P-521)['\"]"]
+    curve_regex: "P-(256|384|521)"
+    confidence: strong_textual
+  - id: js-jsonwebtoken
+    algorithm: DYNAMIC_JWT
+    family: public-key
+    primitive: signature
+    languages: [javascript, typescript]
+    patterns: ["algorithm:\\s*['\"](RS256|RS384|RS512|ES256|ES384|HS256|HS384|HS512|PS256|EdDSA)['\"]"]
+    dynamic_algorithm_regex: "algorithm:\\s*['\"]([A-Za-z0-9]+)['\"]"
+    confidence: strong_textual
+
+  # ---------------------------------------------------------------- Java
+  - id: java-cipher-getinstance
+    algorithm: DYNAMIC_CIPHER
+    family: symmetric
+    primitive: cipher
+    languages: [java]
+    patterns: ["Cipher\\.getInstance\\(\\s*\"([A-Za-z0-9/]+)\""]
+    dynamic_algorithm_regex: "getInstance\\(\\s*\"([A-Za-z0-9]+)"
+    mode_regex: "\"[A-Za-z0-9]+/([A-Z]+)/"
+    confidence: confirmed_api
+  - id: java-keypairgenerator
+    algorithm: DYNAMIC_PK
+    family: public-key
+    primitive: signature
+    languages: [java]
+    patterns: ["KeyPairGenerator\\.getInstance\\(\\s*\"([A-Za-z]+)\""]
+    dynamic_algorithm_regex: "getInstance\\(\\s*\"([A-Za-z]+)"
+    confidence: confirmed_api
+  - id: java-messagedigest
+    algorithm: DYNAMIC_HASH
+    family: hash
+    primitive: hash
+    languages: [java]
+    patterns: ["MessageDigest\\.getInstance\\(\\s*\"([A-Za-z0-9-]+)\""]
+    dynamic_algorithm_regex: "getInstance\\(\\s*\"([A-Za-z0-9-]+)"
+    confidence: confirmed_api
+  - id: java-signature
+    algorithm: DYNAMIC_SIG
+    family: public-key
+    primitive: signature
+    languages: [java]
+    patterns: ["Signature\\.getInstance\\(\\s*\"([A-Za-z0-9]+)\""]
+    dynamic_algorithm_regex: "getInstance\\(\\s*\"([A-Za-z0-9]+)"
+    confidence: confirmed_api
+
+  # ---------------------------------------------------------------- Go
+  - id: go-crypto-imports
+    algorithm: DYNAMIC_GO
+    family: unknown
+    primitive: unknown
+    languages: [go]
+    patterns: ['"crypto/(rsa|ecdsa|ed25519|elliptic|dsa|aes|des|rc4|md5|sha1|sha256|sha512|tls)"']
+    dynamic_algorithm_regex: '"crypto/([a-z0-9]+)"'
+    confidence: confirmed_api
+
+  # ---------------------------------------------------------------- Post-quantum (adoption tracking)
+  - id: pqc-mlkem-kyber
+    algorithm: ML-KEM
+    family: pqc-kem
+    primitive: kem
+    languages: [python, javascript, typescript, java, go, c, cpp, rust]
+    patterns: ['ML-KEM', 'MLKEM', 'Kyber512', 'Kyber768', 'Kyber1024', 'kyber', 'oqs.*kem']
+    confidence: strong_textual
+  - id: pqc-mldsa-dilithium
+    algorithm: ML-DSA
+    family: pqc-signature
+    primitive: signature
+    languages: [python, javascript, typescript, java, go, c, cpp, rust]
+    patterns: ['ML-DSA', 'MLDSA', 'Dilithium2', 'Dilithium3', 'Dilithium5', 'dilithium']
+    confidence: strong_textual
+  - id: pqc-slhdsa-sphincs
+    algorithm: SLH-DSA
+    family: pqc-signature
+    primitive: signature
+    languages: [python, javascript, typescript, java, go, c, cpp, rust]
+    patterns: ['SLH-DSA', 'SPHINCS\+', 'sphincs']
+    confidence: strong_textual
+  - id: pqc-falcon
+    algorithm: Falcon
+    family: pqc-signature
+    primitive: signature
+    languages: [python, javascript, typescript, java, go, c, cpp, rust]
+    patterns: ['Falcon-512', 'Falcon-1024', 'falcon']
+    confidence: weak_textual
+
+  # ---------------------------------------------------------------- Config: TLS / SSH / IPsec
+  - id: cfg-tls-protocol
+    algorithm: TLS
+    family: protocol
+    primitive: protocol
+    languages: [config]
+    patterns: ['(?i)ssl_protocols\s+', '(?i)SSLProtocol\s+', '(?i)MinProtocol\s*=', 'ssl_min_version']
+    version_regex: '(?i)(TLSv1\.3|TLSv1\.2|TLSv1\.1|TLSv1|SSLv3|SSLv2)'
+    confidence: strong_textual
+  - id: cfg-tls-ciphers
+    algorithm: TLS
+    family: protocol
+    primitive: protocol
+    languages: [config]
+    patterns: ['(?i)ssl_ciphers\s+', '(?i)SSLCipherSuite\s+', '(?i)^\s*Ciphers\s+', 'cipher_suites']
+    confidence: strong_textual
+  - id: cfg-ssh-kex
+    algorithm: SSH
+    family: protocol
+    primitive: protocol
+    languages: [config]
+    patterns: ['(?i)^\s*KexAlgorithms\s+', '(?i)^\s*HostKeyAlgorithms\s+', '(?i)^\s*MACs\s+']
+    confidence: strong_textual
+  - id: cfg-openssl-keysize
+    algorithm: RSA
+    family: public-key
+    primitive: signature
+    languages: [config]
+    patterns: ['(?i)default_bits\s*=\s*(\d+)', '(?i)rsa_keygen_bits']
+    key_size_regex: '(\d{3,5})'
+    confidence: strong_textual
+  - id: cfg-generic-algo-kv
+    algorithm: DYNAMIC_KV
+    family: unknown
+    primitive: unknown
+    languages: [config]
+    patterns: ['(?i)(algorithm|cipher|hash|signature_algorithm|kdf|mac)\s*[:=]\s*["'']?([A-Za-z0-9_+-]{2,32})']
+    dynamic_algorithm_regex: '[:=]\s*["'']?([A-Za-z0-9_+-]{2,32})'
+    confidence: weak_textual

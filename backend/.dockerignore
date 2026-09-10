@@ -1,0 +1,17 @@
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+*.db
+*.db-shm
+*.db-wal
+ecdat.db*
+reports_out/
+.ecdat_work/
+.git/
+.env
+htmlcov/
+.coverage

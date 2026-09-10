@@ -1,0 +1,66 @@
+# Default risk-scoring configuration. Editable at runtime via Settings (admin only); the DB
+# value in settings_kv["risk_weights"] overrides this file when present.
+#
+# Every factor is normalised to 1-5. The weighted score is sum(value * weight) with weights
+# summing to 1.0, so the score itself stays on a 1-5 scale and maps to a category band.
+# Scoring is fully deterministic and reproducible from stored factor values + weights.
+version: 2
+
+weights:
+  cryptographic_strength: 0.14   # how weak the primitive is on its own merits (broken -> 5)
+  quantum_vulnerability: 0.20    # Shor-broken -> 5, weakened -> 3, safe -> 1
+  data_sensitivity: 0.14         # classification of the data this asset protects
+  business_criticality: 0.13     # importance of the owning application/system
+  data_lifetime: 0.12            # how many years the data must remain confidential
+  system_lifetime: 0.08          # remaining service life of the system
+  migration_complexity: 0.08     # effort/coupling to replace this asset (higher = more risk of delay)
+  cost: 0.05                     # budget impact of migrating
+  performance_impact: 0.06       # runtime cost of the PQC replacement
+
+# Category bands applied to the final weighted score (inclusive lower bound).
+bands:
+  critical: 4.0
+  high: 3.2
+  medium: 2.3
+  low: 0.0
+
+# When a factor cannot be derived and the owning Application has no value, use this and record
+# source="default" in the breakdown so the UI can flag the assumption.
+neutral_default: 3
+
+# Deterministic normalisation tables (value -> 1..5). Used by app/analysis/risk.py.
+normalizers:
+  quantum_vulnerability:
+    quantum-vulnerable: 5
+    broken-classical: 5
+    quantum-weakened: 3
+    quantum-safe: 1
+    unknown: 3
+  cryptographic_strength:   # by algorithm posture keyword produced by the quantum engine
+    broken: 5
+    legacy: 4
+    acceptable: 2
+    strong: 1
+    unknown: 3
+  migration_complexity:     # by primitive - signatures/protocols are harder to roll out
+    protocol: 5
+    signature: 4
+    kem: 4
+    key-exchange: 4
+    cipher: 3
+    hash: 2
+    mac: 2
+    kdf: 2
+    unknown: 3
+  performance_impact:       # by recommended replacement class
+    slh-dsa: 5
+    "sphincs+": 5
+    classic-mceleece: 5
+    ml-dsa: 3
+    ml-kem: 2
+    falcon: 3
+    hybrid: 3
+    aes-256: 1
+    sha-384: 1
+    none: 1
+    unknown: 3
